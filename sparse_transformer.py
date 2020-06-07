@@ -7,7 +7,7 @@ from torch import nn
 class SparseMultiheadAttention(nn.Module):
     """Simple sparse multihead attention using a limited attention span"""
     def __init__(self, embed_dim, num_heads, dropout=0.1, attn_span=50):
-        super(SparseMultiheadAttention, self).__init__()
+        super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dropout = dropout
@@ -40,13 +40,14 @@ class SparseMultiheadAttention(nn.Module):
         rows = torch.arange(m, device=query.device).repeat(2 * self.attn_span + 1, 1).transpose(0, 1).flatten()
         cols = torch.cat([torch.arange(i - self.attn_span, i + self.attn_span + 1, device=query.device) for i in range(n)])
         bounds = (cols >= 0) & (cols < n)
+        cols[~bounds] = 0
         idxs = torch.stack([rows, cols])
-        vals = (query[:, rows, :] * key[:, cols, :]).sum(-1) / math.sqrt(n)
+        vals = (query[:, rows, :] * key[:, cols, :] * bounds.view(1, -1, 1)).sum(-1) / math.sqrt(n)
         vals[:, ~bounds] = -float("inf")
         vals = torch.dropout(torch.softmax(vals.view(-1, n, 2 * self.attn_span + 1), dim=-1), self.dropout, self.training).view(-1, idxs.size(1))
         attn_matrix = [torch.sparse.FloatTensor(idxs[:, bounds], val[bounds], (m, n)) for val in vals]
         out = self.out_ff(torch.stack([torch.sparse.mm(attn, val) for attn, val in zip(attn_matrix, value)]).transpose(0, 1).contiguous().view(n, -1, self.embed_dim))
-        return out
+        return out, attn_matrix
 
 # Use this to replace Transformer MultiheadAttention with SparseMultiheadAttention
 def replace_modules(model, target, replacement, *args, **kwargs):
