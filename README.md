@@ -1,2 +1,2 @@
 # sparse-transformer
-Sparse Transformer with limited attention span in PyTorch
+Sparse Transformers in PyTorch: limited attention span and projection onto a smaller space
